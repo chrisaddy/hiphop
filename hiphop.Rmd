@@ -1,0 +1,79 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE}
+library(httr)
+library(xml2)
+library(purrr)
+library(tibble)
+library(data.table)
+
+client_id <- Sys.getenv("GENIUS_CLIENT_ID")
+access_token <- Sys.getenv("GENIUS_ACCESS_TOKEN")
+```
+
+```{r warning=FALSE}
+columns <- c("id", "type", "full_title", "title", "title_with_featured", "artist", "primary_artist_id", "annotation_count",
+             "unreviewed_annotations", "hot", "page_views", "lyrics_owner", "lyrics_state", "pyongs_count", "page", "thumbnail",
+             "image", "song_art_thumbnail", "song_art")
+parse_hit <- function(hit) {
+  return(
+    c(
+      hit$result$id,
+      hit$type,
+      hit$result$full_title,
+      hit$result$title,
+      hit$result$title_with_featured,
+      hit$result$artist_names,
+      hit$result$primary_artist$id,
+      hit$result$annotation_count,
+      hit$result$stats$unreviewed_annotations,
+      hit$result$stats$hot,
+      hit$result$stats$pageviews,
+      hit$result$lyrics_owner_id,
+      hit$result$lyrics_state,
+      hit$result$pyongs_count,
+      hit$result$url,
+      hit$result$header_image_thumbnail_url,
+      hit$result$header_image_url,
+      hit$result$song_art_image_thumbnail_url,
+      hit$result$song_art_image_url
+    )
+  )
+}
+
+get_search_page <- function(query, page) {
+  response <- httr::GET(url="https://api.genius.com/search",
+          add_headers(c("Authorization" = glue::glue("Bearer {access_token}"))),
+          client_id=client_id,
+          response_type="code",
+          query=list(q=query, per_page=20, page=page)
+          )
+  return(content(response, "parsed")$response$hits)
+}
+
+search <- function(query) {
+  page <- 0
+  hits <- get_search_page(query, page)
+  while(TRUE) {
+    page <- page + 1
+    new_hits <- get_search_page(query, page)
+    if(length(new_hits) == 0) {
+      break
+    }
+    hits <- c(hits, new_hits)
+  }
+  df <- NULL
+  for(hit in hits) { df <- rbind(df, parse_hit(hit)) }
+  colnames(df) <- columns
+  return(as_tibble(df))
+}
+
+kendrick <- search("Kendrick Lamar")
+```
+
+```{r warning=FALSE}
+kendrick
+```
